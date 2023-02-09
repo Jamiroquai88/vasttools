@@ -1,3 +1,25 @@
+# How to setup the vast.ai machine
+Install Ubuntu 20.04
+You will see a message pending for 2+ minutes when booting, to disable open `/etc/netplan/00-installer-config.yaml` and add
+```
+optional: true
+```
+
+Install build tools
+```
+sudo apt install build-essential
+```
+
+Download NVIDIA driver
+```
+wget https://us.download.nvidia.com/XFree86/Linux-x86_64/525.89.02/NVIDIA-Linux-x86_64-525.89.02.run
+```
+Install it
+```
+sudo bash NVIDIA-Linux-x86_64-525.89.02.run
+```
+
+
 # vasttools
 
 ***I am open to offers for assistance in deployment on vast and continued support.*** Find me on Discored Etherion#0700
