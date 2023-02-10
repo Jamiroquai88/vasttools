@@ -18,6 +18,11 @@ Install it
 ```
 sudo bash NVIDIA-Linux-x86_64-525.89.02.run
 ```
+Install python2.7
+```
+sudo apt install python2.7
+```
+Install vast software
 
 
 # vasttools
