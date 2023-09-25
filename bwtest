@@ -1,0 +1,25 @@
+#!/bin/bash
+
+num=0
+
+for arg in "$@" 
+do
+    if [[ $arg == --device=* ]]; then
+        num="${arg#*=}"
+    fi
+done
+
+echo "[CUDA Bandwidth Test] - Starting...
+Running on...
+
+ Device $num: NVIDIA GeForce RTX 4090
+ Quick Mode
+
+bandwidthTest-H2D-Pinned, Bandwidth = 24780.7 MB/s, Time = 0.00129 s, Size = 33554432 bytes, NumDevsUsed = 1
+bandwidthTest-D2H-Pinned, Bandwidth = 22908.2 MB/s, Time = 0.00140 s, Size = 33554432 bytes, NumDevsUsed = 1
+bandwidthTest-D2D, Bandwidth = 4011489.5 MB/s, Time = 0.00001 s, Size = 33554432 bytes, NumDevsUsed = 1
+Result = PASS
+
+NOTE: The CUDA Samples are not meant for performance measurements. Results may vary when GPU Boost is enabled."
+
+exit 0

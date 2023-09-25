@@ -42,16 +42,98 @@ USDT(ETH ERC20) 0xa5955cf9fe7af53bcaa1d2404e2b17a1f28aac4f
 
 Paypal  PayPal.Me/cryptolabsZA
 
+## Table of Contents
+- [Host install guide for vast](https://github.com/jjziets/vasttools/blob/main/README.md#host-install-guide-for-vastai) 
+- [Speedtest-cli fix for vast](https://github.com/jjziets/vasttools/blob/main/README.md#speedtest-cli-fix-for-vast)
+- [Analytics dashboard (Outdated and broken)](https://github.com/jjziets/vasttools#analytics-dashboardoutdated-and-broken)
+- [Memory oc](https://github.com/jjziets/vasttools#memory-oc)
+- [OC monitor](https://github.com/jjziets/vasttools#oc-monitor)
+- [Stress testing GPUs on vast with Python benchmark of RTX3090's](https://github.com/jjziets/vasttools#stress-testing-gpus-on-vast-with-this-python-benchmark-of-rtx3090s)
+- [Telegram-Vast-Uptime-Bot](#telegram-vast-uptime-bot)
+- [Auto update the price for host listing based on mining profits](#auto-update-the-price-for-host-listing-based-on-mining-profits)
+- [Background job or idle job for vast](#background-job-or-idle-job-for-vast)
+- [Setting fan speeds if you have a headless system](https://github.com/jjziets/vasttools/blob/main/README.md#setting-fans-speeds-if-you-have-headless-system)
+- [Remove unattended-upgrades package](#remove-unattended-upgrades-package)
+- [How to update a host](#how-to-update-a-host)
+- [How to move your vast docker driver to another drive](#how-to-move-your-vast-docker-driver-to-another-drive)
+- [Connecting to running instance with VNC to see applications GUI](#connecting-to-running-instance-with-vnc-to-see-applications-gui)
+- [Setting up 3D accelerated desktop in web browser on vastai](https://github.com/jjziets/vasttools#setting-up-3d-accelerated-desktop-in-webbrowser-on-vastai)
+- [Useful commands](#useful-commands)
+
+## Host install guide for vast.ai 
+
+```
+#Start with a clean install of ubunut 20.04.x server. Just add openssh.
+sudo apt update && sudo apt upgrade -y
+sudo bash -c "echo blacklist nouveau > /etc/modprobe.d/blacklist-nvidia-nouveau.conf" ## this will remove nouveau from the system if it has been installed by the installer
+sudo bash -c "echo options nouveau modeset=0 >> /etc/modprobe.d/blacklist-nvidia-nouveau.conf"
+sudo update-initramfs -u
+sudo echo 'GRUB_CMDLINE_LINUX=systemd.unified_cgroup_hierarchy=false' > /etc/default/grub.d/cgroup.cfg
+sudo update-grub
+sudo reboot
+
+#install the nvidia drivers after reboot. update the url to the latest driver from nvidia website https://www.nvidia.com/download/index.aspx
+sudo su
+bash -c 'apt install build-essential; wget https://us.download.nvidia.com/XFree86/Linux-x86_64/535.54.03/NVIDIA-Linux-x86_64-535.54.03.run; chmod +x NVIDIA-Linux-x86_64-535.54.03.run; ./NVIDIA-Linux-x86_64-535.54.03.run'
+
+# this is needed to remove xserver so that clients can run a desktop gui in an continer wothout problems. It is also needed if one wants to change memory OC and fans speeds. 
+bash -c 'sudo apt-get update; sudo apt-get -y upgrade; sudo apt-get install -y libgtk-3-0; sudo apt-get install -y xinit; sudo apt-get install -y xserver-xorg-core; sudo apt-get remove -y gnome-shell; sudo update-grub; sudo nvidia-xconfig -a --cool-bits=28 --allow-empty-initial-configuration --enable-all-gpus' 
+
+#if Ubuntu is installed to a SSD and you plan to have the vast client data stored on a nvme follow the below instructions. 
+#WARRNING IF YOUR OS IS ON /dev/nvme0n1 IT WILL BE WIPED. CHECK TWICE change this device to the intended device name that you pan to use. 
+echo -e "n\n\n\n\n\n\nw\n" | sudo cfdisk /dev/nvme0n1 && sudo mkfs.xfs /dev/nvme0n1p1 # this is one command that will create the xfs partion and write it to the disk /dev/nvme0n1. 
+sudo mkdir /var/lib/docker
+sudo bash -c 'uuid=$(sudo xfs_admin -lu /dev/nvme0n1p1  | sed -n "2p" | awk "{print \$NF}"); echo "UUID=$uuid /var/lib/docker/ xfs rw,auto,pquota,discard,nofail 0 0" >> /etc/fstab'
+ #I added discard so that the ssd is trimeds by ubunut and nofail if there is some problem with the drive the system will still boot.  
+sudo mount -a
+df -h # check that /dev/nvme0n1p1 is mounted to /var/lib/docker/
+sudo bash -c '(crontab -l; echo "@reboot nvidia-smi -pm 1" ) | crontab -' #this will enable Persistence mode on reboot so that the gpus can go to idle power when not used 
+#run the install command for vast
+sudo wget https://console.vast.ai/install -O install; sudo python3 install YourKey; history -d $((HISTCMD-1)); 
+#follow the Configure Networking instructions as per https://console.vast.ai/host/setup
+#test the ports with running sudo nc -l -p port on the host machine and use https://portchecker.co to verify  
+sudo bash -c 'echo "40000-40019" > /var/lib/vastai_kaalia/host_port_range'
+sudo reboot #After reboot check that the drive is mounted to /var/lib/docker and that your systems shows up on vast dashboard. 
+```
+
+## Speedtest-cli fix for vast
+If you are having problems with your machine not showing its upload and download speed correctly. 
+```
+sudo apt-get install curl
+sudo curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
+sudo apt-get install speedtest -y
+sudo apt install python3 -y
+cd /var/lib/vastai_kaalia/latest
+sudo mv speedtest-cli speedtest-cli.old
+sudo wget -O speedtest-cli https://raw.githubusercontent.com/jjziets/vasttools/main/speedtest-cli.py
+sudo chmod +x speedtest-cli
+```
+
+This updated your speedtest to the newer one and tranlsate the output so that vast demon can use it. 
+If your now get slower speeds follow this
+
+```
+## If migrating from prior bintray install instructions please first...
+# sudo rm /etc/apt/sources.list.d/speedtest.list
+# sudo apt-get update
+# sudo apt-get remove speedtest -y
+## Other non-official binaries will conflict with Speedtest CLI
+# Example how to remove using apt-get
+# sudo apt-get remove speedtest-cli
+sudo apt-get install curl
+curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
+sudo apt-get install speedtest
+```
 
 
 ## Analytics dashboard
-This is an analytics dashboard for remotely monitoring system information as well as tracking earnings.
-https://github.com/jjziets/vastai_analytics_dasboard
+Prometheus Grafana monitoring systems that sends allerts and tracks all metrix regarding your equipment. It does not track ernings yet or rentals. 
+[https://github.com/jjziets/vastai_analytics_dasboard](https://github.com/jjziets/DCMontoring/blob/main/README.md)
 
 ## Memory oc
 
 set the OC of the RTX 3090
-It requires the folliwing
+It requires the following
 
 on the host run the following command:
 ```
@@ -62,7 +144,7 @@ sudo ./set_mem.sh 2000 # this will set the memory OC to +1000mhs on all the gpus
 ```
 
 ## OC monitor
-setup the monitoring programe that will change the memory oc based on what programe is running. it desinged for RTX3090's and targets ethminer at this stage.
+setup the monitoring program that will change the memory oc based on what programe is running. it designed for RTX3090's and targets ethminer at this stage.
 It requires both set_mem.sh and ocmonitor.sh to run in the root.
 
 ```
@@ -77,10 +159,10 @@ sudo (crontab -l; echo "@reboot screen -dmS ocmonitor /home/jzietsman/ocminitor.
 ```
 
 ## Stress testing gpus on vast with this python Benchmark of RTX3090's
-Mining does not stress your system the same as python work loads so this is a good test to run as well. 
+Mining does not stress your system the same as python work loads do, so this is a good test to run as well. 
 https://github.com/jjziets/pytorch-benchmark-volta
 
-a full suit of stress testest can be found docker image jjziets/vastai-benchmarks:latest 
+a full suit of stress tests can be found docker image jjziets/vastai-benchmarks:latest 
 in folder /app/
 ```
 stress-ng - CPU stress
@@ -90,7 +172,7 @@ sysbench - Memory latency and speed benchmark
 dd - Drive speed benchmark
 Hashcat - Benchmark
 bandwithTest - GPU bandwith benchmark
-pytorch - Pytorch DL  benchmark
+pytorch - Pytorch DL benchmark
 ```
 #test or bash inteface
 ```
@@ -112,7 +194,7 @@ sudo docker run -v ${PWD}/output:/app/output --shm-size 1G --rm -it -e SLEEP_TIM
 This is a set of scripts for monitoring machine crashes. Run the client on your vast machine and the server on a remote one. You get notifications on Telegram if no heartbeats are sent within the timeout (default 12 seconds).
 https://github.com/jjziets/Telegram-Vast-Uptime-Bot
 
-## Auto update the price for host listing based on mining porfits.
+## Auto update the price for host listing based on mining profits.
 
 based on RTX 3090 120Mhs for eth. it sets the price of my 2 host. 
 it works with a custom Vast-cli which can be found here https://github.com/jjziets/vast-python/blob/master/vast.py
@@ -127,7 +209,7 @@ wget https://github.com/jjziets/vasttools/blob/main/setprice.sh
 sudo chmod +x setprice.sh
 ```
 
-## Backgorund job or idle job for vast.
+## Background job or idle job for vast.
 ![image](https://user-images.githubusercontent.com/19214485/180140050-75547875-6a1b-41c6-a0c0-6f235f673a4b.png)
 
 use imnage nvidia/cuda:11.2.0-base
@@ -141,24 +223,21 @@ bash -c 'apt -y update; apt -y install wget; apt -y install libcurl3; apt -y ins
 ```  
 
 ## setting fans speeds if you have headless system.
-I have two scripts that you can use to set the fan speeds of all the gpus. Single or Dual fans use https://github.com/jjziets/test/blob/master/cool_gpu.sh 
+Here is a repo with two programs and a few scripts that you can use to manage your fans
+https://github.com/jjziets/GPU_FAN_OC_Manager/tree/main
 
-and tripple fans use https://github.com/jjziets/test/blob/master/cool_gpu2.sh
+```  
+bash -c "wget https://github.com/jjziets/GPU_FAN_OC_Manager/raw/main/set_fan_curve; chmod +x set_fan_curve; CURRENT_PATH=\$(pwd); nohup bash -c \"while true; do \$CURRENT_PATH/set_fan_curve 65; sleep 1; done\" > output.txt & (crontab -l; echo \"@reboot screen -dmS gpuManger bash -c 'while true; do \$CURRENT_PATH/set_fan_curve 65; sleep 1; done'\") | crontab -"
 
-to use run this command
-```
-sudo apt-get install libgtk-3-0 && sudo apt-get install xinit && sudo apt-get install xserver-xorg-core && sudo update-grub && sudo nvidia-xconfig -a --cool-bits=28 --allow-empty-initial-configuration --enable-all-gpus
-wget https://raw.githubusercontent.com/jjziets/test/master/cool_gpu.sh
-#or wget https://raw.githubusercontent.com/jjziets/test/master/cool_gpu2.sh
-sudo chmod +x cool_gpu.sh
-sudo ./cool_gpu.sh 100 # this sets the fans to 100%
-```
+```  
 
-## Remove unattended-upgrades Packag
+
+
+## Remove unattended-upgrades Package
 If your system updates while vast is running or even worse when a client is renting you then you might get de-verified or banned. It's advised to only update when the system is unrented and delisted. best would be to set an end date of your listing and conduct updates and upgrades at that stage. 
 to stop unattended-upgrades run the following commands.
 ```
-sudo apt purge --auto-remove unattended-upgrades
+sudo apt purge --auto-remove unattended-upgrades -y
 sudo systemctl disable apt-daily-upgrade.timer
 sudo systemctl mask apt-daily-upgrade.service 
 sudo systemctl disable apt-daily.timer
@@ -169,6 +248,38 @@ sudo systemctl mask apt-daily.service
 When the system is idle and delisted run the following commands. vast demon and docker services are stopped. It is also a good idea to upgrade Nvidia drivers like this. If you don't and the upgrades brakes a package you might get de-verifyed or even banned from vast. 
 ```
 bash -c ' sudo systemctl stop vastai; sudo systemctl stop docker.socket; sudo systemctl stop docker; sudo apt update; sudo apt upgrade -y; sudo systemctl start docker.socket ; sudo systemctl start docker; sudo systemctl start vastai'
+```
+## How to move your vast docker driver to another drive.
+The below guide assumes that you have vastai installed and there is stored data on the current drive. I will provide steps to backup the data and switch to the new drive. 
+```
+sudo systemctl stop vastai 
+sudo systemctl stop docker.socket 
+sudo systemctl stop docker
+sudo systemctl disable vastai 
+sudo systemctl disable docker.socket 
+sudo systemctl disable docker
+sudo tar -c -I 'pixz -k -1' -f - /var/lib/docker | pv | ./docker.tar.pixz" # this assumes you have eenought space on the OS driver in your home folder to backup the docker driver. We are using pixz as it can decompress using multiple cores. 
+sudo umount /var/lib/docker  #this is optional if you have plan to power off and install the new drive.
+sudo nano /etc/fstab
+
+# find the line that looks like this UUID="ced30d99-8dc1-4a5a-a1fb-8dcc83b7b87d" /var/lib/docker/ xfs rw,auto,pquota,nofail 0 0 and add a # in front to comment it out. if you don't then the systems will not startup. crt-x to save the changes.
+#if the new driver is not installed you can now poweroff and install it.
+#This rest of this guide will assume you have a raid prepared and its /dev/md0 if you are using a nvme driver then the device name will look like /dev/nvme0n1 
+
+sudo cfdisk  /dev/md0  #assuming this is the device you want make a partition( use /dev/nvme0n1 to get /dev/nvme0n1p1 for example ).
+sudo mkfs.xfs -f /dev/md0p1   #create the xfs
+sudo xfs_admin -lu /dev/md0p1  #this will return the UUID number that you need to use
+sudo nano /etc/fstab # edit the fastab and add the below line 
+UUID="92e59ab8-450b-4967-b137-2b81eef5532b" /var/lib/docker/ xfs rw,auto,pquota,discard 0 0   # use the UUID that was generated by xfs_admin above and you need to keep the ""
+sudo mount -a   #this will use the fstab to mount the partition. 
+df -h # use this to check that /dev/md0p1 or /dev/nvme0n1p1      is mounted to /var/lib/docker
+cd / # go to the root of your systems 
+sudo cat /home/user/docker.tar.pixz | pv | sudo tar -x -I 'pixz -d -k' #you need to replace user with the user you have logged in to. 
+sudo systemctl enable vastai 
+sudo systemctl enable docker.socket 
+sudo systemctl enable docker
+sudo reboot
+# After reboot check that the driver you wanted is mounted to /var/lib/docker and that vastai is running.
 ```
 
 ## Connecting to running instance with vnc to see applications gui 
@@ -206,7 +317,33 @@ To connect use the ip of the host and the port that was provided. In this case  
 then enjoy the destkop. sadly this is not hardware accelarted. so no games will work 
 
 
-## Usefull commands 
+## Setting up 3D accelerated Desktop in webbrowser on vastai
+We will be using ghcr.io/ehfd/nvidia-glx-desktop:latest
+![image](https://user-images.githubusercontent.com/19214485/203529896-d0e68c96-e2d5-4171-8a57-5ce1fefe3394.png)
+use this env paramters
+
+```
+-e TZ=UTC -e SIZEW=1920 -e SIZEH=1080 -e REFRESH=60 -e DPI=96 -e CDEPTH=24 -e VIDEO_PORT=DFP -e PASSWD=mypasswd -e WEBRTC_ENCODER=nvh264enc -e BASIC_AUTH_PASSWORD=mypasswd -p 8080:8080
+
+```
+find a system that has open ports
+![image](https://user-images.githubusercontent.com/19214485/203530107-67ac5b89-7014-4b37-b646-4a15fa9da6a1.png)
+
+when done loading click open
+![image](https://user-images.githubusercontent.com/19214485/203530801-a17b89c5-2fc1-4780-b262-77183918f8fe.png)
+
+username is **user** and password is what you set **mypasswd** in this case
+![image](https://user-images.githubusercontent.com/19214485/203530916-c655dd69-a0dc-4225-b0a0-fac5469cd44c.png)
+
+hit start
+![image](https://user-images.githubusercontent.com/19214485/203531080-cb475042-ebf9-45a4-8713-4ed618a7c16c.png)
+
+3D accelerated desktop environment in a web browser
+![image](https://user-images.githubusercontent.com/19214485/203531203-14415d38-1db2-43f8-9ec1-dfe68a61206b.png)
+
+
+
+## Useful commands 
 "If you set up the vast CLI, you can enter this
 ```
 ./vast show machines | grep "current_rentals_running_on_demand"
